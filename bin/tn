@@ -1,0 +1,80 @@
+#!/usr/bin/env node
+
+const { Command } = require('commander');
+const pkg = require('../package.json');
+
+// Import commands
+const createCommand = require('../commands/create');
+const listCommand = require('../commands/list');
+const completeCommand = require('../commands/complete');
+const searchCommand = require('../commands/search');
+const interactiveCommand = require('../commands/interactive');
+const configCommand = require('../commands/config');
+
+const program = new Command();
+
+program
+  .name('tn')
+  .description('TaskNotes CLI - Create and manage tasks from the command line')
+  .version(pkg.version);
+
+// Interactive mode (default when no args)
+program
+  .action((str, options) => {
+    // If first argument looks like a task string, create it directly
+    if (str && typeof str === 'string') {
+      createCommand.handler(str);
+    } else {
+      // Otherwise enter interactive mode
+      interactiveCommand.handler();
+    }
+  });
+
+// Explicit commands
+program
+  .command('create <text>')
+  .description('Create a task from natural language text')
+  .action(createCommand.handler);
+
+program
+  .command('list')
+  .description('List tasks')
+  .option('--today', 'Show only today\'s tasks')
+  .option('--overdue', 'Show only overdue tasks')
+  .option('--completed', 'Show completed tasks')
+  .option('--limit <number>', 'Limit number of results', '20')
+  .action(listCommand.handler);
+
+program
+  .command('complete <taskId>')
+  .description('Mark a task as complete')
+  .action(completeCommand.handler);
+
+program
+  .command('search <query>')
+  .description('Search tasks')
+  .action(searchCommand.handler);
+
+program
+  .command('interactive')
+  .alias('i')
+  .description('Enter interactive mode with real-time preview')
+  .action(interactiveCommand.handler);
+
+program
+  .command('config')
+  .description('Configure TaskNotes CLI settings')
+  .option('--set <key=value>', 'Set a configuration value')
+  .option('--get <key>', 'Get a configuration value')
+  .option('--list', 'List all configuration')
+  .action(configCommand.handler);
+
+// Handle case where user just types 'tn' with no args
+if (process.argv.length === 2) {
+  interactiveCommand.handler();
+} else if (process.argv.length === 3 && !process.argv[2].startsWith('-')) {
+  // Single argument that's not a flag - treat as task creation
+  createCommand.handler(process.argv[2]);
+} else {
+  program.parse();
+}

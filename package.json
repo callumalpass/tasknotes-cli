@@ -1,0 +1,49 @@
+{
+  "name": "tasknotes-cli",
+  "version": "1.0.0",
+  "description": "Command-line interface for TaskNotes with interactive mode and real-time NLP preview",
+  "main": "bin/tn",
+  "bin": {
+    "tn": "./bin/tn"
+  },
+  "scripts": {
+    "start": "node bin/tn",
+    "dev": "node --inspect bin/tn",
+    "test": "jest",
+    "build": "npm install",
+    "prepublishOnly": "npm test"
+  },
+  "keywords": [
+    "cli",
+    "task-management",
+    "obsidian",
+    "productivity",
+    "nlp",
+    "interactive"
+  ],
+  "author": "TaskNotes",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^11.1.0",
+    "chalk": "^4.1.2",
+    "ora": "^5.4.1",
+    "inquirer": "^8.2.5",
+    "node-fetch": "^2.7.0",
+    "date-fns": "^2.30.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "@types/react": "^18.2.0"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/callumalpass/tasknotes-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/callumalpass/tasknotes-cli/issues"
+  },
+  "homepage": "https://github.com/callumalpass/tasknotes-cli#readme"
+}
