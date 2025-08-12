@@ -5,6 +5,7 @@ const { showError, showSuccess, formatPreview, colors } = require('../lib/utils'
 let api;
 let lastInput = '';
 let previewTimer = null;
+let lastPreviewText = '';
 
 async function handler() {
   try {
@@ -19,13 +20,19 @@ async function handler() {
 
     showSuccess('Connected to TaskNotes API');
     console.log(colors.info('📝 TaskNotes Interactive Mode'));
-    console.log(colors.dim('Type your task description to see real-time parsing preview'));
-    console.log(colors.dim('Press Enter to create task, Ctrl+C to exit\n'));
+    console.log(colors.dim('Type your task description and press Enter to create'));
+    console.log(colors.dim('Press Ctrl+C to exit'));
+    console.log('─'.repeat(process.stdout.columns || 80));
+    
+    // Reserve space for preview
+    console.log(colors.dim('Preview: (will appear here as you type)'));
+    console.log('─'.repeat(process.stdout.columns || 80));
+    console.log('');
 
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
-      prompt: colors.highlight('> ')
+      prompt: colors.highlight('Task: ')
     });
 
     rl.prompt();
@@ -38,8 +45,9 @@ async function handler() {
         return;
       }
 
-      // Create the task
-      console.log(colors.dim('\nCreating task...'));
+      // Clear current line and show creating message
+      process.stdout.write('\r\x1b[K');
+      console.log(colors.dim('Creating task...'));
       
       try {
         const result = await api.createTask(trimmedInput);
@@ -53,12 +61,18 @@ async function handler() {
           console.log(formatPreview(result.parsed));
         }
         
-        console.log(''); // Empty line
+        console.log('\n' + '─'.repeat(process.stdout.columns || 80));
+        console.log(colors.dim('Preview: (will appear here as you type)'));
+        console.log('─'.repeat(process.stdout.columns || 80));
+        console.log('');
+        
+        lastInput = '';
+        lastPreviewText = '';
         rl.prompt();
         
       } catch (error) {
         showError(error.message);
-        console.log(''); // Empty line
+        console.log('');
         rl.prompt();
       }
     });
@@ -68,10 +82,11 @@ async function handler() {
       process.exit(0);
     });
 
-    // Handle input changes for preview
+    // Simple keypress handling without raw mode
     rl.input.on('keypress', (str, key) => {
-      if (key && (key.name === 'return' || key.name === 'enter')) {
-        return; // Let the line handler deal with this
+      // Skip if it's a control key we don't want to handle
+      if (key && (key.ctrl || key.meta || key.name === 'return' || key.name === 'enter')) {
+        return;
       }
 
       // Clear existing timer
@@ -81,12 +96,15 @@ async function handler() {
 
       // Set new timer for preview
       previewTimer = setTimeout(() => {
-        const currentInput = rl.line.trim();
+        const currentInput = rl.line ? rl.line.trim() : '';
         if (currentInput && currentInput !== lastInput) {
           lastInput = currentInput;
           showPreview(currentInput);
+        } else if (!currentInput && lastPreviewText) {
+          updatePreview('(will appear here as you type)');
+          lastPreviewText = '';
         }
-      }, 500); // 500ms delay
+      }, 500); // 500ms delay to avoid too frequent updates
     });
 
   } catch (error) {
@@ -95,19 +113,25 @@ async function handler() {
   }
 }
 
+function updatePreview(text) {
+  // Save current cursor position
+  process.stdout.write('\x1b[s'); // Save cursor
+  process.stdout.write('\x1b[3A'); // Move up 3 lines to the preview line
+  process.stdout.write('\r\x1b[K'); // Clear line
+  process.stdout.write(colors.dim('Preview: ') + text);
+  process.stdout.write('\x1b[u'); // Restore cursor
+}
+
 async function showPreview(input) {
   try {
     const result = await api.parseText(input);
     const parsed = result.parsed;
     
-    // Clear current line and move up to show preview
-    process.stdout.write('\r\x1b[K'); // Clear current line
-    process.stdout.write('\x1b[1A'); // Move up one line
-    process.stdout.write('\r\x1b[K'); // Clear that line too
-    
-    // Show preview
-    console.log(colors.dim('Preview:'), formatPreviewInline(parsed));
-    console.log(colors.highlight('> ') + input);
+    const previewText = formatPreviewInline(parsed);
+    if (previewText && previewText !== lastPreviewText) {
+      lastPreviewText = previewText;
+      updatePreview(previewText);
+    }
     
   } catch (error) {
     // Silently ignore preview errors
@@ -119,6 +143,11 @@ function formatPreviewInline(parsed) {
   
   if (parsed.title) {
     parts.push(colors.info(`"${parsed.title}"`));
+  }
+  
+  if (parsed.status) {
+    const statusColor = colors.status[parsed.status] || colors.info;
+    parts.push(statusColor(`[${parsed.status.toUpperCase()}]`));
   }
   
   if (parsed.priority) {
