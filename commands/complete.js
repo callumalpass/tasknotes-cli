@@ -29,12 +29,25 @@ async function handler(taskId) {
     } catch (error) {
       spinner.fail('Task not found');
       showError(`Could not find task with ID: ${taskId}`);
-      showError('Use "tn list" to see available tasks');
+      showError('This may be an API issue with task ID format');
+      showError('Try using "tn list" to see available task IDs');
       process.exit(1);
     }
 
-    // Check if already completed
-    if (task.status === 'completed') {
+    // Get status configuration to check if task is already completed
+    let isAlreadyCompleted = false;
+    try {
+      const filterOptions = await api.getFilterOptions();
+      const completedStatuses = filterOptions.statuses
+        .filter(s => s.isCompleted)
+        .map(s => s.value);
+      isAlreadyCompleted = completedStatuses.includes(task.status);
+    } catch (error) {
+      // Fallback to simple check if API call fails
+      isAlreadyCompleted = task.status === 'completed' || task.status === 'done';
+    }
+
+    if (isAlreadyCompleted) {
       spinner.warn('Task is already completed');
       console.log('\nTask:');
       console.log(formatTask(task));
@@ -45,7 +58,20 @@ async function handler(taskId) {
     spinner.text = 'Updating task status...';
     const updatedTask = await api.toggleTaskStatus(taskId);
     
-    if (updatedTask.status === 'completed') {
+    // Check if the updated status is now completed
+    let isNowCompleted = false;
+    try {
+      const filterOptions = await api.getFilterOptions();
+      const completedStatuses = filterOptions.statuses
+        .filter(s => s.isCompleted)
+        .map(s => s.value);
+      isNowCompleted = completedStatuses.includes(updatedTask.status);
+    } catch (error) {
+      // Fallback to simple check if API call fails
+      isNowCompleted = updatedTask.status === 'completed' || updatedTask.status === 'done';
+    }
+    
+    if (isNowCompleted) {
       spinner.succeed('Task marked as complete!');
     } else {
       spinner.succeed(`Task status changed to: ${updatedTask.status}`);

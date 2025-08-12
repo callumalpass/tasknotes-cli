@@ -18,18 +18,6 @@ program
   .description('TaskNotes CLI - Create and manage tasks from the command line')
   .version(pkg.version);
 
-// Interactive mode (default when no args)
-program
-  .action((str, options) => {
-    // If first argument looks like a task string, create it directly
-    if (str && typeof str === 'string') {
-      createCommand.handler(str);
-    } else {
-      // Otherwise enter interactive mode
-      interactiveCommand.handler();
-    }
-  });
-
 // Explicit commands
 program
   .command('create <text>')
@@ -42,7 +30,9 @@ program
   .option('--today', 'Show only today\'s tasks')
   .option('--overdue', 'Show only overdue tasks')
   .option('--completed', 'Show completed tasks')
+  .option('--filter <expression>', 'Advanced filter expression (e.g., "priority:high AND tags:urgent")')
   .option('--limit <number>', 'Limit number of results', '20')
+  .option('--json', 'Output results as JSON')
   .action(listCommand.handler);
 
 program
@@ -69,12 +59,26 @@ program
   .option('--list', 'List all configuration')
   .action(configCommand.handler);
 
-// Handle case where user just types 'tn' with no args
-if (process.argv.length === 2) {
-  interactiveCommand.handler();
-} else if (process.argv.length === 3 && !process.argv[2].startsWith('-')) {
-  // Single argument that's not a flag - treat as task creation
-  createCommand.handler(process.argv[2]);
-} else {
-  program.parse();
-}
+program
+  .command('filter-help')
+  .description('Show advanced filter syntax help')
+  .action(() => {
+    const FilterParser = require('../lib/filter-parser');
+    const parser = new FilterParser();
+    console.log(parser.getHelpText());
+  });
+
+// Add default action for unrecognized arguments (task creation)
+program
+  .argument('[text...]', 'Task text to create (if not a recognized command)')
+  .action((text) => {
+    if (text && text.length > 0) {
+      // Join all arguments as task text
+      createCommand.handler(text.join(' '));
+    } else {
+      // No arguments - enter interactive mode
+      interactiveCommand.handler();
+    }
+  });
+
+program.parse();

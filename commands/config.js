@@ -10,7 +10,7 @@ async function handler(options = {}) {
       const { key, value } = parseKeyValue(options.set);
       
       // Validate known keys
-      const validKeys = ['host', 'port', 'authToken', 'dateFormat', 'timeFormat', 'defaultPriority', 'maxResults'];
+      const validKeys = ['host', 'port', 'authToken', 'maxResults'];
       if (!validKeys.includes(key)) {
         showError(`Unknown configuration key: ${key}`);
         showInfo(`Valid keys: ${validKeys.join(', ')}`);
@@ -102,13 +102,6 @@ async function interactiveSetup() {
       name: 'authToken',
       message: 'API authentication token (optional):',
       default: currentConfig.authToken
-    },
-    {
-      type: 'list',
-      name: 'defaultPriority',
-      message: 'Default task priority:',
-      choices: ['low', 'medium', 'high'],
-      default: currentConfig.defaultPriority
     },
     {
       type: 'number',

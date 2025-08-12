@@ -1,0 +1,370 @@
+#!/bin/bash
+
+# TaskNotes FZF Interactive Browser
+# Browse tasks with fuzzy search, preview, and quick actions
+
+set -euo pipefail
+
+# Configuration
+DEFAULT_LIMIT=1000
+FZF_HEIGHT="80%"
+PREVIEW_WIDTH="50%"
+
+# Colors and icons are handled inline in functions for better compatibility
+
+# Help text
+show_help() {
+    cat << 'EOF'
+TaskNotes FZF Interactive Browser
+
+Usage: tn-fzf [OPTIONS] [FILTER]
+
+Options:
+  --help              Show this help
+  --completed         Show completed tasks
+  --overdue           Show overdue tasks  
+  --today             Show today's tasks
+  --limit <N>         Limit results (default: 1000)
+  --no-preview        Disable file preview
+  
+Filter Examples:
+  tn-fzf "priority:urgent"
+  tn-fzf "tags:project AND status:in-progress"
+  tn-fzf --today
+
+Keybindings:
+  ENTER               Open in Obsidian
+  Ctrl-E              Open in $EDITOR
+  Alt-A               Add new task (interactive)
+  Ctrl-R              Refresh tasks
+  Ctrl-C / ESC        Exit
+  
+Requirements:
+  - fzf
+  - jq
+  - TaskNotes CLI (tn)
+EOF
+}
+
+# Check dependencies
+check_dependencies() {
+    local missing=()
+    
+    command -v fzf >/dev/null || missing+=("fzf")
+    command -v jq >/dev/null || missing+=("jq") 
+    command -v tn >/dev/null || missing+=("tn")
+    
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        echo "Error: Missing required dependencies:" >&2
+        printf '  %s\n' "${missing[@]}" >&2
+        echo >&2
+        echo "Install with:" >&2
+        echo "  # Ubuntu/Debian: sudo apt install fzf jq" >&2
+        echo "  # macOS: brew install fzf jq" >&2
+        echo "  # tn: npm install -g (or build from source)" >&2
+        exit 1
+    fi
+}
+
+# Format a single task for display
+format_task() {
+    local task="$1"
+    
+    # Extract fields with fallbacks
+    local title=$(echo "$task" | jq -r '.title // "Untitled"')
+    local task_status=$(echo "$task" | jq -r '.status // "unknown"')
+    local task_priority=$(echo "$task" | jq -r '.priority // "normal"')
+    local scheduled=$(echo "$task" | jq -r '.scheduled // ""')
+    local due=$(echo "$task" | jq -r '.due // ""')
+    local path=$(echo "$task" | jq -r '.path // ""')
+    
+    # Get tags, contexts, projects as arrays
+    local tags=$(echo "$task" | jq -r 'if .tags then .tags[] else empty end' | sed 's/^/#/' | tr '\n' ' ')
+    local contexts=$(echo "$task" | jq -r 'if .contexts then .contexts[] else empty end' | sed 's/^/@/' | tr '\n' ' ')
+    local projects=$(echo "$task" | jq -r 'if .projects then .projects[] else empty end' | sed 's/^/+/' | tr '\n' ' ')
+    
+    # Color codes with safer access
+    local status_color="37"
+    local priority_color="37"
+    
+    case "$task_status" in
+        "todo") status_color="37" ;;
+        "open") status_color="37" ;;
+        "in-progress") status_color="33" ;;
+        "done") status_color="32" ;;
+        "completed") status_color="32" ;;
+        "cancelled") status_color="31" ;;
+        "waiting") status_color="36" ;;
+    esac
+    
+    case "$task_priority" in
+        "low") priority_color="37" ;;
+        "normal") priority_color="37" ;;
+        "high") priority_color="35" ;;
+        "urgent") priority_color="31" ;;
+    esac
+    
+    # Status indicator
+    local status_icon="○"
+    case "$task_status" in
+        "done"|"completed") status_icon="●" ;;
+        "in-progress") status_icon="◐" ;;
+        "cancelled") status_icon="✗" ;;
+        "waiting") status_icon="⏸" ;;
+    esac
+    
+    # Priority indicator  
+    local priority_indicator=""
+    case "$task_priority" in
+        "high") priority_indicator="[HIGH]" ;;
+        "urgent") priority_indicator="[URGENT]" ;;
+        "low") priority_indicator="[LOW]" ;;
+    esac
+    
+    # Date indicators
+    local date_info=""
+    if [[ -n "$due" ]]; then
+        local due_date=$(date -d "$due" "+%m/%d" 2>/dev/null || echo "$due")
+        date_info="📅$due_date"
+    fi
+    if [[ -n "$scheduled" ]]; then
+        local sched_date=$(date -d "$scheduled" "+%m/%d" 2>/dev/null || echo "$scheduled")
+        date_info="${date_info:+$date_info }⏰$sched_date"
+    fi
+    
+    # Build the line
+    local line=""
+    line+="\033[${status_color}m${status_icon}\033[0m "
+    line+="$title"
+    [[ -n "$priority_indicator" ]] && line+=" \033[${priority_color}m${priority_indicator}\033[0m"
+    [[ -n "$date_info" ]] && line+=" $date_info"
+    [[ -n "$tags" ]] && line+=" $tags"
+    [[ -n "$contexts" ]] && line+=" $contexts" 
+    [[ -n "$projects" ]] && line+=" $projects"
+    line+="\t$path"  # Tab-separated path for extraction
+    
+    echo -e "$line"
+}
+
+# Get tasks and format for fzf
+get_tasks() {
+    local args=("--json" "--limit" "${limit}")
+    
+    # Add filter options
+    [[ "$completed" == "true" ]] && args+=("--completed")
+    [[ "$overdue" == "true" ]] && args+=("--overdue") 
+    [[ "$today" == "true" ]] && args+=("--today")
+    [[ -n "$filter" ]] && args+=("--filter" "$filter")
+    
+    # Get tasks, sort by scheduled date, format for display
+    local json_output=$(tn list "${args[@]}" 2>/dev/null)
+    
+    if [[ -z "$json_output" ]]; then
+        echo "Error: No output from tn list command" >&2
+        return 1
+    fi
+    
+    echo "$json_output" | jq -c '.data.tasks | sort_by(.scheduled // "9999-12-31") | .[]' | while IFS= read -r task; do
+        format_task "$task"
+    done
+}
+
+# Note: Preview and action functions are now implemented as temporary scripts
+# This avoids issues with fzf not being able to call bash functions directly
+
+# Get vault information
+get_vault_info() {
+    tn list --limit 1 --json 2>/dev/null | jq -r '.data.vault // {}'
+}
+
+# Main function
+main() {
+    # Parse arguments
+    local completed="false"
+    local overdue="false"
+    local today="false"
+    local limit="$DEFAULT_LIMIT"
+    local filter=""
+    local no_preview="false"
+    
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --help)
+                show_help
+                exit 0
+                ;;
+            --completed)
+                completed="true"
+                shift
+                ;;
+            --overdue)
+                overdue="true" 
+                shift
+                ;;
+            --today)
+                today="true"
+                shift
+                ;;
+            --limit)
+                limit="$2"
+                shift 2
+                ;;
+            --no-preview)
+                no_preview="true"
+                shift
+                ;;
+            --*)
+                echo "Error: Unknown option $1" >&2
+                echo "Use --help for usage information" >&2
+                exit 1
+                ;;
+            *)
+                filter="$1"
+                shift
+                ;;
+        esac
+    done
+    
+    # Check dependencies
+    check_dependencies
+    
+    # Get vault information
+    echo "Getting vault information..." >&2
+    local vault_info=$(get_vault_info)
+    local vault_name=$(echo "$vault_info" | jq -r '.name // "unknown"')
+    local vault_path=$(echo "$vault_info" | jq -r '.path // ""')
+    
+    if [[ -z "$vault_path" || "$vault_path" == "null" ]]; then
+        echo "Error: Could not get vault path from TaskNotes API" >&2
+        exit 1
+    fi
+    
+    echo "Vault: $vault_name ($vault_path)" >&2
+    echo "Loading tasks..." >&2
+    
+    # Create temporary script for preview
+    local preview_script="/tmp/tn-fzf-preview-$$"
+    cat > "$preview_script" << EOF
+#!/bin/bash
+line="\$1"
+vault_path="$vault_path"
+path=\$(echo "\$line" | cut -d\$'\t' -f2)
+full_path="\$vault_path/\$path"
+
+if [[ -f "\$full_path" ]]; then
+    echo "📄 \$path"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo
+    if command -v bat >/dev/null; then
+        bat --style=plain --color=always --language=markdown "\$full_path" 2>/dev/null || cat "\$full_path"
+    elif command -v highlight >/dev/null; then
+        highlight -O ansi --syntax=markdown "\$full_path" 2>/dev/null || cat "\$full_path"
+    else
+        cat "\$full_path"
+    fi
+else
+    echo "❌ File not found: \$full_path"
+fi
+EOF
+    chmod +x "$preview_script"
+    
+    # Create temporary script for editor
+    local editor_script="/tmp/tn-fzf-editor-$$"
+    cat > "$editor_script" << EOF
+#!/bin/bash
+line="\$1"
+vault_path="$vault_path"
+path=\$(echo "\$line" | cut -d\$'\t' -f2)
+full_path="\$vault_path/\$path"
+editor="\${EDITOR:-nano}"
+
+if [[ -f "\$full_path" ]]; then
+    echo "Opening \$path in \$editor..."
+    "\$editor" "\$full_path"
+else
+    echo "Error: File not found: \$full_path"
+    read -p "Press any key to continue..."
+fi
+EOF
+    chmod +x "$editor_script"
+    
+    # Create temporary script for reload
+    local reload_script="/tmp/tn-fzf-reload-$$"
+    cat > "$reload_script" << EOF
+#!/bin/bash
+cd "$PWD"
+export completed="$completed" overdue="$overdue" today="$today" limit="$limit" filter="$filter"
+source "./bin/tn-fzf"
+get_tasks 2>/dev/null
+EOF
+    chmod +x "$reload_script"
+    
+    # Create temporary script for adding new task
+    local add_task_script="/tmp/tn-fzf-add-$$"
+    cat > "$add_task_script" << EOF
+#!/bin/bash
+cd "$PWD"
+echo "Creating new task..."
+echo "Press Ctrl-C to cancel and return to task list"
+echo
+node bin/tn
+EOF
+    chmod +x "$add_task_script"
+
+    # Set up fzf options
+    local fzf_opts=(
+        "--ansi"
+        "--height=$FZF_HEIGHT"
+        "--layout=reverse"
+        "--border"
+        "--info=inline"
+        "--prompt=Tasks❯ "
+        "--header=ENTER=Obsidian | Ctrl-E=Editor | Alt-A=Add Task | Ctrl-R=Refresh | Ctrl-C=Exit"
+        "--bind=ctrl-r:reload($reload_script)"
+        "--bind=ctrl-e:execute($editor_script {})"
+        "--bind=alt-a:execute($add_task_script)+reload($reload_script)"
+        "--delimiter=\t"
+        "--with-nth=1"
+    )
+    
+    # Add preview if not disabled
+    if [[ "$no_preview" != "true" ]]; then
+        fzf_opts+=(
+            "--preview=$preview_script {}"
+            "--preview-window=right:$PREVIEW_WIDTH:wrap"
+        )
+    fi
+    
+    # Run fzf and handle result
+    local selected
+    selected=$(get_tasks | fzf "${fzf_opts[@]}")
+    
+    # Cleanup temporary scripts
+    rm -f "$preview_script" "$editor_script" "$reload_script" "$add_task_script"
+    
+    # Handle selection (ENTER key - open in Obsidian)
+    if [[ -n "$selected" ]]; then
+        local path=$(echo "$selected" | cut -d$'\t' -f2)
+        local file_path=$(echo "$path" | sed 's/\.md$//')  # Remove .md extension for Obsidian
+        
+        # Create Obsidian URL
+        local obsidian_url="obsidian://open?vault=$(printf '%s' "$vault_name" | jq -rR @uri)&file=$(printf '%s' "$file_path" | jq -rR @uri)"
+        
+        echo "Opening in Obsidian: $file_path"
+        
+        # Open with appropriate command based on OS
+        if command -v xdg-open >/dev/null; then
+            xdg-open "$obsidian_url" >/dev/null 2>&1
+        elif command -v open >/dev/null; then
+            open "$obsidian_url" >/dev/null 2>&1  
+        else
+            echo "Error: Could not open Obsidian URL. Install xdg-open (Linux) or use macOS."
+            echo "URL: $obsidian_url"
+        fi
+    fi
+}
+
+# Only run main if script is executed directly (not sourced)
+if [[ "${BASH_SOURCE[0]:-$0}" == "${0}" ]]; then
+    main "$@"
+fi

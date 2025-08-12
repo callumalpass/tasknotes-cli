@@ -22,20 +22,25 @@ async function handler(query) {
 
     // Get all tasks and filter client-side for now
     // TODO: Update when API supports server-side search
-    const result = await api.listTasks({ limit: 1000, archived: 'false' });
+    const result = await api.listTasks({ limit: 1000, archived: 'false', completed: 'false' });
     const allTasks = result.tasks || [];
     
     // Simple text search across task fields
     const query_lower = query.toLowerCase();
     const matchingTasks = allTasks.filter(task => {
-      return (
-        task.title?.toLowerCase().includes(query_lower) ||
-        task.details?.toLowerCase().includes(query_lower) ||
-        task.tags?.some(tag => tag.toLowerCase().includes(query_lower)) ||
-        task.contexts?.some(ctx => ctx.toLowerCase().includes(query_lower)) ||
-        task.projects?.some(proj => proj.toLowerCase().includes(query_lower)) ||
-        task.id?.toLowerCase().includes(query_lower)
-      );
+      try {
+        return (
+          task.title?.toLowerCase().includes(query_lower) ||
+          task.details?.toLowerCase().includes(query_lower) ||
+          (task.tags?.filter(tag => tag && typeof tag === 'string').some(tag => tag.toLowerCase().includes(query_lower))) ||
+          (task.contexts?.filter(ctx => ctx && typeof ctx === 'string').some(ctx => ctx.toLowerCase().includes(query_lower))) ||
+          (task.projects?.filter(proj => proj && typeof proj === 'string').some(proj => proj.toLowerCase().includes(query_lower))) ||
+          (task.id || task.path)?.toLowerCase().includes(query_lower)
+        );
+      } catch (error) {
+        // Skip problematic tasks
+        return false;
+      }
     });
 
     spinner.succeed(`Found ${matchingTasks.length} tasks matching "${query}"`);
