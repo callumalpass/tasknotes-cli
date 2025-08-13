@@ -64,14 +64,15 @@ async function startPomodoro(api, options) {
     const result = await api.startPomodoro(params);
     spinner.succeed('Pomodoro started');
     
-    const duration = Math.round(result.duration / 60); // Convert to minutes
+    const duration = result.duration ? Math.round(result.duration / 60000) : 25; // Convert from milliseconds to minutes
     showSuccess(`Started ${duration}-minute pomodoro session`);
     
     if (result.task) {
       showInfo(`Task: ${result.task.title}`);
     }
     
-    if (result.isWorkSession) {
+    const sessionType = result.currentSession?.type || result.type || 'work';
+    if (sessionType === 'work') {
       console.log(chalk.green('🍅 Work session started'));
     } else {
       console.log(chalk.blue('☕ Break session started'));
@@ -142,13 +143,14 @@ async function showPomodoroStatus(api, options) {
     spinner.succeed('Pomodoro status retrieved');
     
     if (status.isRunning) {
-      const remaining = Math.round(status.timeRemaining / 60);
-      const total = Math.round(status.totalDuration / 60);
+      const remaining = status.timeRemaining ? Math.round(status.timeRemaining / 60) : 0; // Convert from seconds to minutes
+      const total = status.currentSession?.plannedDuration || 25; // Already in minutes
       const elapsed = total - remaining;
       
       console.log('\n' + chalk.green('🍅 Pomodoro is running'));
       
-      if (status.isWorkSession) {
+      const sessionType = status.currentSession?.type || 'work';
+      if (sessionType === 'work') {
         console.log(chalk.green('Type: Work session'));
       } else {
         console.log(chalk.blue('Type: Break session'));
@@ -166,7 +168,7 @@ async function showPomodoroStatus(api, options) {
       }
       
       // Progress bar
-      const progress = elapsed / total;
+      const progress = total > 0 ? elapsed / total : 0;
       const barLength = 20;
       const filledLength = Math.round(barLength * progress);
       const progressBar = '█'.repeat(filledLength) + '░'.repeat(barLength - filledLength);
