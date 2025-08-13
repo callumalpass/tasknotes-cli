@@ -6,9 +6,13 @@ A command-line interface for TaskNotes with interactive mode and real-time NLP p
 
 -  **Quick Task Creation**: Create tasks with natural language parsing
 -  **Interactive Mode**: Real-time preview as you type
--  **Task Management**: List, search, and complete tasks
+-  **Task Management**: List, search, update, and complete tasks
 -  **Advanced Filtering**: Complex query expressions with logical operators
 -  **Smart Parsing**: Extract dates, priorities, tags, contexts, and more
+-  **Time Tracking**: Start/stop timers, view time logs and sessions
+-  **Pomodoro Integration**: Full pomodoro timer with stats and task integration
+-  **Project Management**: Create, view, and manage projects with stats
+-  **Recurring Tasks**: Create and manage recurring tasks with patterns
 -  **FZF Integration**: Interactive fuzzy-search task browser with preview
 -  **JSON Output**: Machine-readable output for automation and scripting
 -  **Full File Paths**: Access to complete vault paths for external tools
@@ -76,13 +80,68 @@ tn-fzf --today --limit 50
 # Complete a task
 tn complete "TaskNotes/Tasks/Buy groceries.md"
 
+# Update task properties
+tn update "TaskNotes/Tasks/Buy groceries.md" --status completed --priority low
+tn update "task-123" --add-tags "urgent,important" --due "2025-08-20"
+
+# Task management
+tn toggle "TaskNotes/Tasks/Buy groceries.md"  # Toggle task status
+tn archive "TaskNotes/Tasks/Buy groceries.md" # Archive/unarchive task
+tn delete "TaskNotes/Tasks/Buy groceries.md" --force # Delete task permanently
+
+# Complete recurring task instances  
+tn recurring-complete "recurring-task-123" "2025-08-13"
+
 # Search tasks
 tn search "groceries"
+
+# Time tracking
+tn timer start --task "TaskNotes/Tasks/Buy groceries.md"
+tn timer status
+tn timer stop
+tn timer log --date 2025-08-13 --limit 10
+
+# Pomodoro timer
+tn pomodoro start --task "TaskNotes/Tasks/Buy groceries.md" --duration 25
+tn pomodoro status  # Shows enhanced status with daily progress
+tn pomodoro pause
+tn pomodoro resume
+tn pomodoro stop
+tn pomodoro stats   # Daily statistics
+tn pomodoro sessions --limit 10  # View session history
+
+# Project management
+tn projects list
+tn projects show "Website Redesign"
+tn projects create "New Project" --description "My new project"
+tn projects stats "Website Redesign" --period month
+
+# Recurring tasks
+tn recurring create --title "Weekly standup" --pattern "every monday" --time "09:00"
+tn recurring list
+tn recurring show --id "recurring-123"
+tn recurring instances --id "recurring-123" --limit 10
+tn recurring disable --id "recurring-123"
+tn recurring enable --id "recurring-123"
+
+# Task management  
+tn delete "TaskNotes/Tasks/Buy groceries.md" --force  # Delete task
+tn toggle "TaskNotes/Tasks/Buy groceries.md"          # Toggle status
+tn archive "TaskNotes/Tasks/Buy groceries.md"         # Archive/unarchive
+
+# Utility commands
+tn filter-options     # Show available filter options
+tn api-docs           # Show TaskNotes API documentation
+tn api-docs --ui      # Get Swagger UI URL
 
 # Configuration
 tn config
 tn config --set host=192.168.1.100
 tn config --list
+
+# Task statistics and insights
+tn stats
+tn stats --json
 
 # View filter syntax help
 tn filter-help
@@ -275,6 +334,215 @@ tn list --filter "priority:urgent" --json | jq -r '.data.vault.path as $vault | 
 
 # Backup all project tasks
 tn list --filter "tags:project" --json | jq -r '.data.vault.path as $vault | .data.tasks[] | $vault + "/" + .path' | xargs -I {} cp {} /backup/
+```
+
+## Time Tracking & Productivity
+
+### Time Tracking
+
+Track time spent on tasks with built-in timer functionality:
+
+```bash
+# Start timer for a specific task
+tn timer start --task "TaskNotes/Tasks/Fix bug #123.md"
+
+# Check current timer status
+tn timer status
+
+# Stop the running timer
+tn timer stop
+
+# View time log for today
+tn timer log
+
+# View time log for specific date
+tn timer log --date 2025-08-13
+
+# View time log for specific task
+tn timer log --task "TaskNotes/Tasks/Fix bug #123.md" --limit 5
+```
+
+### Pomodoro Timer
+
+Integrated pomodoro timer with task tracking and statistics:
+
+```bash
+# Start 25-minute pomodoro session
+tn pomodoro start --task "TaskNotes/Tasks/Write documentation.md"
+
+# Start custom duration pomodoro
+tn pomodoro start --task "task-123" --duration 45
+
+# Check pomodoro status with progress
+tn pomodoro status
+
+# Pause/resume current session
+tn pomodoro pause
+tn pomodoro resume
+
+# Stop current session
+tn pomodoro stop
+
+# View pomodoro session history
+tn pomodoro sessions
+tn pomodoro sessions --date 2025-08-13
+tn pomodoro sessions --limit 5
+
+# View daily pomodoro stats
+tn pomodoro stats
+
+# View stats for specific date
+tn pomodoro stats --date 2025-08-13
+```
+
+## Project Management
+
+Organize tasks into projects with comprehensive project views:
+
+```bash
+# List all projects
+tn projects list
+
+# View project details with recent tasks
+tn projects show "Website Redesign"
+tn projects show "Website Redesign" --limit 20
+
+# Create new project
+tn projects create "Mobile App" --description "iOS and Android development"
+tn projects create "Mobile App" --folder "Projects" --template "agile"
+
+# View project statistics
+tn projects stats "Website Redesign"
+tn projects stats "Website Redesign" --period week
+tn projects stats "Website Redesign" --period month
+
+# JSON output for automation
+tn projects list --json
+tn projects show "Website Redesign" --json
+```
+
+## Recurring Tasks
+
+Create and manage recurring tasks with flexible patterns:
+
+```bash
+# Create daily recurring task
+tn recurring create --title "Daily standup" --pattern "daily" --time "09:00"
+
+# Create weekly recurring task
+tn recurring create --title "Team meeting" --pattern "weekly" --time "14:00"
+tn recurring create --title "Code review" --pattern "every friday" --time "16:00"
+
+# Create complex patterns
+tn recurring create --title "Monthly report" --pattern "every first monday" --time "10:00"
+
+# List all recurring tasks
+tn recurring list
+
+# List only active recurring tasks
+tn recurring list --active true
+
+# View recurring task details
+tn recurring show --id "recurring-123"
+
+# View recurring task instances
+tn recurring instances --id "recurring-123"
+tn recurring instances --id "recurring-123" --status completed
+tn recurring instances --id "recurring-123" --from 2025-08-01 --to 2025-08-31
+
+# Update recurring task
+tn recurring update --id "recurring-123" --pattern "every tuesday" --time "10:30"
+tn recurring update --id "recurring-123" --title "Updated title" --priority high
+
+# Disable/enable recurring tasks
+tn recurring disable --id "recurring-123"
+tn recurring enable --id "recurring-123"
+
+# JSON output
+tn recurring list --json
+tn recurring show --id "recurring-123" --json
+```
+
+### Recurring Pattern Examples
+
+Supported recurring patterns:
+
+- **Daily**: `daily`, `every day`
+- **Weekly**: `weekly`, `every week`, `every monday`, `every tue`, `every friday`
+- **Monthly**: `monthly`, `every month`, `every first monday`, `every last friday`
+- **Custom**: `every 2 days`, `every 3 weeks`, `every 2 months`
+
+## Task Updates
+
+Update task properties without editing files:
+
+```bash
+# Update task status
+tn update "task-123" --status "in-progress"
+tn update "TaskNotes/Tasks/Bug fix.md" --status completed
+
+# Update priority and due date
+tn update "task-123" --priority urgent --due "2025-08-20"
+
+# Update multiple properties
+tn update "task-123" --title "New title" --estimate 120 --priority high
+
+# Add/remove tags
+tn update "task-123" --add-tags "urgent,bug,frontend"
+tn update "task-123" --remove-tags "low-priority"
+
+# Add/remove contexts and projects
+tn update "task-123" --add-contexts "office,meeting"
+tn update "task-123" --add-projects "Website Redesign"
+tn update "task-123" --remove-contexts "home"
+```
+
+## Statistics and Insights
+
+Get comprehensive statistics about your task management:
+
+```bash
+# View task statistics with insights
+tn stats
+
+# Get JSON output for automation
+tn stats --json
+```
+
+The stats command provides:
+
+- **Task counts** - Total, completed, active, overdue, archived
+- **Completion rate** - Percentage of tasks completed
+- **Time tracking insights** - How many tasks have time data
+- **Visual progress bars** - Easy-to-read completion progress
+- **Productivity insights** - Suggestions based on your task patterns
+- **Distribution breakdown** - How tasks are distributed across states
+
+Example output:
+```
+📊 Task Statistics
+────────────────────────────────────────
+Total tasks: 299
+Completed: 77
+Active: 216
+Overdue: 40
+Archived: 11
+With time tracking: 18
+Completion rate: 27%
+Progress: [█████░░░░░░░░░░░░░░░] 27%
+
+Task Distribution:
+● Active: 75% (216 tasks)
+● Completed: 27% (77 tasks)
+● Overdue: 14% (40 tasks)
+● Archived: 11 tasks (not included in percentages)
+
+⚠️  Insights:
+• High number of overdue tasks - try breaking them into smaller tasks
+
+⏱️  Time Tracking:
+• 6% of tasks have time tracking data
+• Consider using time tracking for better productivity insights
 ```
 
 ## Natural Language Parsing

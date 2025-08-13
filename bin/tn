@@ -10,6 +10,17 @@ const completeCommand = require('../commands/complete');
 const searchCommand = require('../commands/search');
 const interactiveCommand = require('../commands/interactive');
 const configCommand = require('../commands/config');
+const timerCommand = require('../commands/timer');
+const pomodoroCommand = require('../commands/pomodoro');
+const updateCommand = require('../commands/update');
+const projectsCommand = require('../commands/projects');
+const statsCommand = require('../commands/stats');
+const deleteCommand = require('../commands/delete');
+const toggleCommand = require('../commands/toggle');
+const archiveCommand = require('../commands/archive');
+const filterOptionsCommand = require('../commands/filter-options');
+const recurringCompleteCommand = require('../commands/recurring-complete');
+const apiDocsCommand = require('../commands/api-docs');
 
 const program = new Command();
 
@@ -58,6 +69,100 @@ program
   .option('--get <key>', 'Get a configuration value')
   .option('--list', 'List all configuration')
   .action(configCommand.handler);
+
+program
+  .command('update <taskId>')
+  .description('Update task properties')
+  .option('--status <status>', 'Update task status')
+  .option('--priority <priority>', 'Update task priority')
+  .option('--due <date>', 'Update due date')
+  .option('--scheduled <date>', 'Update scheduled date')
+  .option('--title <title>', 'Update task title')
+  .option('--estimate <minutes>', 'Update time estimate in minutes')
+  .option('--add-tags <tags>', 'Add tags (comma-separated)')
+  .option('--remove-tags <tags>', 'Remove tags (comma-separated)')
+  .option('--add-contexts <contexts>', 'Add contexts (comma-separated)')
+  .option('--remove-contexts <contexts>', 'Remove contexts (comma-separated)')
+  .option('--add-projects <projects>', 'Add projects (comma-separated)')
+  .option('--remove-projects <projects>', 'Remove projects (comma-separated)')
+  .action(updateCommand.handler);
+
+// Timer commands
+program
+  .command('timer <action>')
+  .description('Time tracking commands (start, stop, status, log)')
+  .option('--task <taskId>', 'Task ID for timer operations')
+  .option('--date <date>', 'Filter by date (YYYY-MM-DD)')
+  .option('--limit <number>', 'Limit number of results')
+  .action(timerCommand.handler);
+
+// Pomodoro commands
+program
+  .command('pomodoro <action>')
+  .description('Pomodoro timer commands (start, stop, pause, resume, status, stats, sessions)')
+  .option('--task <taskId>', 'Task ID for pomodoro session')
+  .option('--duration <minutes>', 'Custom session duration in minutes')
+  .option('--date <date>', 'Filter stats/sessions by date (YYYY-MM-DD)')
+  .option('--week', 'Show weekly stats')
+  .option('--month', 'Show monthly stats')
+  .option('--limit <number>', 'Limit number of sessions shown')
+  .action(pomodoroCommand.handler);
+
+// Project commands
+program
+  .command('projects <action> [projectName]')
+  .description('Project management (list, show, create, stats)')
+  .option('--description <desc>', 'Project description when creating')
+  .option('--template <template>', 'Project template when creating')
+  .option('--folder <folder>', 'Project folder when creating')
+  .option('--limit <number>', 'Limit number of tasks shown')
+  .option('--period <period>', 'Stats period (week, month, year)')
+  .option('--json', 'Output as JSON')
+  .action(projectsCommand.handler);
+
+// Task management commands
+program
+  .command('delete <taskId>')
+  .description('Delete a task')
+  .option('--force', 'Skip confirmation prompt')
+  .action(deleteCommand.handler);
+
+program
+  .command('toggle <taskId>')
+  .description('Toggle task status')
+  .option('--json', 'Output as JSON')
+  .action(toggleCommand.handler);
+
+program
+  .command('archive <taskId>')
+  .description('Toggle task archive status')
+  .option('--json', 'Output as JSON')
+  .action(archiveCommand.handler);
+
+program
+  .command('filter-options')
+  .description('Show available filter options from tasks')
+  .option('--json', 'Output as JSON')
+  .action(filterOptionsCommand.handler);
+
+program
+  .command('recurring-complete <taskId> <instanceDate>')
+  .description('Complete a recurring task instance')
+  .option('--json', 'Output as JSON')
+  .action(recurringCompleteCommand.handler);
+
+program
+  .command('api-docs')
+  .description('Show TaskNotes API documentation')
+  .option('--ui', 'Show Swagger UI URL instead of spec')
+  .option('--json', 'Output API spec as JSON')
+  .action(apiDocsCommand.handler);
+
+program
+  .command('stats')
+  .description('Show task statistics and insights')
+  .option('--json', 'Output results as JSON')
+  .action(statsCommand.handler);
 
 program
   .command('filter-help')
