@@ -64,7 +64,7 @@ async function startPomodoro(api, options) {
     const result = await api.startPomodoro(params);
     spinner.succeed('Pomodoro started');
     
-    const duration = result.duration ? Math.round(result.duration / 60000) : 25; // Convert from milliseconds to minutes
+    const duration = result.session?.plannedDuration || 25; // Duration is now in minutes from API
     showSuccess(`Started ${duration}-minute pomodoro session`);
     
     if (result.task) {

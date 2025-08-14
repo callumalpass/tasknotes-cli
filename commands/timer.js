@@ -52,13 +52,16 @@ async function startTimer(api, options) {
     const result = await api.startTimer(options.task);
     spinner.succeed('Timer started');
     showSuccess(`Started timer for: ${result.title}`);
-    if (result.estimate) {
-      showInfo(`Estimated time: ${result.estimate} minutes`);
+    if (result.timeEstimate) {
+      showInfo(`Estimated time: ${result.timeEstimate} minutes`);
     }
     if (result.timeEntries && result.timeEntries.length > 0) {
-      const currentEntry = result.timeEntries[result.timeEntries.length - 1];
-      if (currentEntry.startTime && !currentEntry.endTime) {
-        showInfo(`Timer started at: ${new Date(currentEntry.startTime).toLocaleTimeString()}`);
+      const lastEntry = result.timeEntries[result.timeEntries.length - 1];
+      if (lastEntry.startTime && !lastEntry.endTime) {
+        showInfo(`Timer started at: ${new Date(lastEntry.startTime).toLocaleTimeString()}`);
+        if (lastEntry.description) {
+          showInfo(`Description: ${lastEntry.description}`);
+        }
       }
     }
   } catch (error) {
@@ -85,8 +88,21 @@ async function stopTimer(api, options) {
       if (lastEntry.endTime && lastEntry.startTime) {
         const duration = Math.round((new Date(lastEntry.endTime) - new Date(lastEntry.startTime)) / 60000);
         showInfo(`Session duration: ${duration} minutes`);
+        if (lastEntry.description) {
+          showInfo(`Description: ${lastEntry.description}`);
+        }
       }
     }
+    
+    // Calculate total time from all entries
+    const totalMinutes = result.timeEntries.reduce((total, entry) => {
+      if (entry.endTime && entry.startTime) {
+        return total + Math.round((new Date(entry.endTime) - new Date(entry.startTime)) / 60000);
+      }
+      return total;
+    }, 0);
+    
+    showInfo(`Total time on task: ${totalMinutes} minutes (${result.timeEntries.length} sessions)`);
   } catch (error) {
     spinner.fail('Failed to stop timer');
     throw error;
@@ -100,17 +116,21 @@ async function showTimerStatus(api, options) {
     const status = await api.getTimerStatus();
     spinner.succeed('Timer status retrieved');
     
-    if (status.isRunning) {
-      const elapsed = Math.round(status.elapsed / 60); // Convert to minutes
-      console.log('\n' + chalk.green('⏱️  Timer is running'));
-      console.log(`Task: ${chalk.bold(status.task.title)}`);
-      console.log(`Elapsed: ${chalk.cyan(elapsed)} minutes`);
-      if (status.task.estimate) {
-        const remaining = status.task.estimate - elapsed;
-        console.log(`Estimated remaining: ${remaining > 0 ? chalk.yellow(remaining) : chalk.red('Over estimate')} minutes`);
-      }
+    if (status.activeSessions && status.activeSessions.length > 0) {
+      console.log('\n' + chalk.green(`⏱️  ${status.totalActiveSessions} timer${status.totalActiveSessions === 1 ? '' : 's'} running`));
+      console.log(`Total elapsed: ${chalk.cyan(status.totalElapsedMinutes)} minutes\n`);
+      
+      status.activeSessions.forEach((activeSession, index) => {
+        if (index > 0) console.log('');
+        console.log(`${chalk.bold('Task:')} ${activeSession.task.title}`);
+        console.log(`${chalk.cyan('Elapsed:')} ${activeSession.elapsedMinutes} minutes`);
+        console.log(`${chalk.gray('Started:')} ${new Date(activeSession.session.startTime).toLocaleTimeString()}`);
+        if (activeSession.session.description) {
+          console.log(`${chalk.gray('Description:')} ${activeSession.session.description}`);
+        }
+      });
     } else {
-      console.log('\n' + chalk.gray('⏱️  No timer running'));
+      console.log('\n' + chalk.gray('⏱️  No timers running'));
     }
   } catch (error) {
     spinner.fail('Failed to get timer status');
@@ -123,47 +143,87 @@ async function showTimeLog(api, options) {
   
   try {
     const filters = {};
+    if (options.period) {
+      filters.period = options.period;
+    } else {
+      filters.period = 'today'; // Default to today
+    }
+    if (options.from) {
+      filters.from = options.from;
+    }
+    if (options.to) {
+      filters.to = options.to;
+    }
+    
+    // If a specific task is requested, get that task's time data instead
     if (options.task) {
-      filters.task = options.task;
-    }
-    if (options.date) {
-      filters.date = options.date;
-    }
-    if (options.limit) {
-      filters.limit = parseInt(options.limit);
-    }
-    
-    const log = await api.getTimeLog(filters);
-    spinner.succeed(`Found ${log.sessions.length} time sessions`);
-    
-    if (log.sessions.length === 0) {
-      showInfo('No time sessions found');
-      return;
-    }
+      const taskTimeData = await api.getTaskTimeData(options.task);
+      spinner.succeed(`Found ${taskTimeData.timeEntries.length} time entries for task`);
+      
+      if (taskTimeData.timeEntries.length === 0) {
+        showInfo('No time entries found for this task');
+        return;
+      }
 
-    console.log('\n' + chalk.bold('Time Log:'));
-    console.log('─'.repeat(60));
-    
-    let totalTime = 0;
-    log.sessions.forEach((session, index) => {
-      if (index > 0) console.log('');
+      console.log('\n' + chalk.bold(`Time Log for: ${taskTimeData.task.title}`));
+      console.log('─'.repeat(60));
+      console.log(`${chalk.cyan('Total time:')} ${taskTimeData.summary.totalMinutes} minutes (${taskTimeData.summary.totalHours} hours)`);
+      console.log(`${chalk.gray('Sessions:')} ${taskTimeData.summary.totalSessions} (${taskTimeData.summary.completedSessions} completed, ${taskTimeData.summary.activeSessions} active)`);
       
-      const duration = Math.round(session.duration / 60); // Convert to minutes
-      const startTime = new Date(session.startTime).toLocaleString();
-      
-      console.log(`${chalk.cyan('Duration:')} ${duration} minutes`);
-      console.log(`${chalk.gray('Started:')} ${startTime}`);
-      console.log(`${chalk.blue('Task:')} ${session.task.title}`);
-      
-      if (session.task.path) {
-        console.log(`${chalk.gray('File:')} ${session.task.path}`);
+      if (taskTimeData.activeSession) {
+        console.log(`${chalk.green('Active session:')} ${taskTimeData.activeSession.elapsedMinutes} minutes (started ${new Date(taskTimeData.activeSession.startTime).toLocaleTimeString()})`);
       }
       
-      totalTime += duration;
-    });
+      console.log('\n' + chalk.bold('Time Entries:'));
+      taskTimeData.timeEntries.forEach((entry, index) => {
+        if (index > 0) console.log('');
+        
+        const startTime = new Date(entry.startTime).toLocaleString();
+        const endTime = entry.endTime ? new Date(entry.endTime).toLocaleString() : 'Running';
+        const status = entry.isActive ? chalk.green('Running') : chalk.gray('Completed');
+        
+        console.log(`${chalk.cyan('Duration:')} ${entry.duration} minutes`);
+        console.log(`${chalk.gray('Started:')} ${startTime}`);
+        console.log(`${chalk.gray('Ended:')} ${endTime}`);
+        console.log(`${chalk.gray('Status:')} ${status}`);
+        if (entry.description) {
+          console.log(`${chalk.gray('Description:')} ${entry.description}`);
+        }
+      });
+      
+      return;
+    }
     
-    if (log.sessions.length > 1) {
-      console.log('\n' + chalk.bold(`Total time: ${totalTime} minutes`));
+    // Get time summary for the specified period
+    const summary = await api.getTimeLog(filters);
+    spinner.succeed(`Time summary for ${summary.period}`);
+    
+    console.log('\n' + chalk.bold(`Time Summary - ${summary.period.charAt(0).toUpperCase() + summary.period.slice(1)}`));
+    console.log('─'.repeat(60));
+    console.log(`${chalk.cyan('Total time:')} ${summary.summary.totalMinutes} minutes (${summary.summary.totalHours} hours)`);
+    console.log(`${chalk.gray('Tasks with time:')} ${summary.summary.tasksWithTime}`);
+    console.log(`${chalk.gray('Active tasks:')} ${summary.summary.activeTasks}`);
+    console.log(`${chalk.gray('Completed tasks:')} ${summary.summary.completedTasks}`);
+    
+    if (summary.topTasks.length > 0) {
+      console.log('\n' + chalk.bold('Top Tasks:'));
+      summary.topTasks.slice(0, 5).forEach((task, index) => {
+        console.log(`${index + 1}. ${chalk.blue(task.title)} - ${chalk.cyan(task.minutes)} minutes`);
+      });
+    }
+    
+    if (summary.topProjects.length > 0) {
+      console.log('\n' + chalk.bold('Top Projects:'));
+      summary.topProjects.slice(0, 5).forEach((project, index) => {
+        console.log(`${index + 1}. ${chalk.blue(project.project)} - ${chalk.cyan(project.minutes)} minutes`);
+      });
+    }
+    
+    if (summary.topTags.length > 0) {
+      console.log('\n' + chalk.bold('Top Tags:'));
+      summary.topTags.slice(0, 5).forEach((tag, index) => {
+        console.log(`${index + 1}. ${chalk.blue(tag.tag)} - ${chalk.cyan(tag.minutes)} minutes`);
+      });
     }
     
   } catch (error) {

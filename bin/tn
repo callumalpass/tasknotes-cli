@@ -92,7 +92,9 @@ program
   .command('timer <action>')
   .description('Time tracking commands (start, stop, status, log)')
   .option('--task <taskId>', 'Task ID for timer operations')
-  .option('--date <date>', 'Filter by date (YYYY-MM-DD)')
+  .option('--period <period>', 'Time period for log (today, week, month, all)')
+  .option('--from <date>', 'Start date for custom period (ISO format)')
+  .option('--to <date>', 'End date for custom period (ISO format)')
   .option('--limit <number>', 'Limit number of results')
   .action(timerCommand.handler);
 
