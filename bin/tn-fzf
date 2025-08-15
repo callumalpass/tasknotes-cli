@@ -24,6 +24,11 @@ Options:
   --completed         Show completed tasks
   --overdue           Show overdue tasks  
   --today             Show today's tasks
+  --active-timers     Show only tasks with active timers
+  --project <name>    Filter by project
+  --tag <name>        Filter by tag
+  --status <status>   Filter by status
+  --priority <level>  Filter by priority
   --limit <N>         Limit results (default: 1000)
   --no-preview        Disable file preview
   
@@ -36,7 +41,16 @@ Keybindings:
   ENTER               Open in Obsidian
   Ctrl-E              Open in $EDITOR
   Alt-A               Add new task (interactive)
+  Alt-C               Complete/toggle task
+  Alt-D               Delete task
+  Alt-U               Update task properties
+  Alt-T               Start timer for task
+  Alt-S               Stop timer for task
+  Alt-P               Start pomodoro for task
+  Alt-I               Show task details/stats
   Ctrl-R              Refresh tasks
+  Ctrl-T              Show timer status
+  Ctrl-P              Show pomodoro status
   Ctrl-C / ESC        Exit
   
 Requirements:
@@ -77,6 +91,7 @@ format_task() {
     local scheduled=$(echo "$task" | jq -r '.scheduled // ""')
     local due=$(echo "$task" | jq -r '.due // ""')
     local path=$(echo "$task" | jq -r '.path // ""')
+    local task_id=$(echo "$task" | jq -r '.id // .path // ""')
     
     # Get tags, contexts, projects as arrays
     local tags=$(echo "$task" | jq -r 'if .tags then .tags[] else empty end' | sed 's/^/#/' | tr '\n' ' ')
@@ -132,11 +147,21 @@ format_task() {
         date_info="${date_info:+$date_info }⏰$sched_date"
     fi
     
+    # Timer and pomodoro indicators
+    local activity_info=""
+    if echo "${active_timers:-}" | grep -q "^$task_id$"; then
+        activity_info="⏱️"
+    fi
+    if [[ "${pomodoro_task:-}" == "$task_id" ]]; then
+        activity_info="${activity_info:+$activity_info }🍅"
+    fi
+    
     # Build the line
     local line=""
     line+="\033[${status_color}m${status_icon}\033[0m "
     line+="$title"
     [[ -n "$priority_indicator" ]] && line+=" \033[${priority_color}m${priority_indicator}\033[0m"
+    [[ -n "$activity_info" ]] && line+=" $activity_info"
     [[ -n "$date_info" ]] && line+=" $date_info"
     [[ -n "$tags" ]] && line+=" $tags"
     [[ -n "$contexts" ]] && line+=" $contexts" 
@@ -154,7 +179,28 @@ get_tasks() {
     [[ "$completed" == "true" ]] && args+=("--completed")
     [[ "$overdue" == "true" ]] && args+=("--overdue") 
     [[ "$today" == "true" ]] && args+=("--today")
-    [[ -n "$filter" ]] && args+=("--filter" "$filter")
+    
+    # Build compound filter from individual options
+    local compound_filter=""
+    [[ -n "$project" ]] && compound_filter="projects:$project"
+    [[ -n "$tag" ]] && compound_filter="${compound_filter:+$compound_filter AND }tags:$tag"
+    [[ -n "$filter_status" ]] && compound_filter="${compound_filter:+$compound_filter AND }status:$filter_status"
+    [[ -n "$priority" ]] && compound_filter="${compound_filter:+$compound_filter AND }priority:$priority"
+    
+    # Combine with user-provided filter
+    if [[ -n "$filter" ]]; then
+        if [[ -n "$compound_filter" ]]; then
+            compound_filter="($compound_filter) AND ($filter)"
+        else
+            compound_filter="$filter"
+        fi
+    fi
+    
+    [[ -n "$compound_filter" ]] && args+=("--filter" "$compound_filter")
+    
+    # Get active timer and pomodoro status
+    export active_timers=$(get_active_timers)
+    export pomodoro_task=$(get_pomodoro_status)
     
     # Get tasks, sort by scheduled date, format for display
     local json_output=$(tn list "${args[@]}" 2>/dev/null)
@@ -164,9 +210,30 @@ get_tasks() {
         return 1
     fi
     
-    echo "$json_output" | jq -c '.data.tasks | sort_by(.scheduled // "9999-12-31") | .[]' | while IFS= read -r task; do
-        format_task "$task"
-    done
+    if [[ "$active_timers" == "true" ]]; then
+        # Filter to show only tasks with active timers
+        echo "$json_output" | jq -c '.data.tasks | sort_by(.scheduled // "9999-12-31") | .[]' | while IFS= read -r task; do
+            local task_id=$(echo "$task" | jq -r '.id // .path // ""')
+            if echo "${active_timers}" | grep -q "^$task_id$"; then
+                format_task "$task"
+            fi
+        done
+    else
+        # Show all tasks
+        echo "$json_output" | jq -c '.data.tasks | sort_by(.scheduled // "9999-12-31") | .[]' | while IFS= read -r task; do
+            format_task "$task"
+        done
+    fi
+}
+
+# Get active timer sessions
+get_active_timers() {
+    tn timer status --json 2>/dev/null | jq -r '.data.activeSessions[]?.task.id // empty' 2>/dev/null || true
+}
+
+# Get current pomodoro status
+get_pomodoro_status() {
+    tn pomodoro status --json 2>/dev/null | jq -r 'if .data.isRunning then .data.currentSession.task.id // "no-task" else empty end' 2>/dev/null || true
 }
 
 # Note: Preview and action functions are now implemented as temporary scripts
@@ -183,6 +250,11 @@ main() {
     local completed="false"
     local overdue="false"
     local today="false"
+    local active_timers="false"
+    local project=""
+    local tag=""
+    local filter_status=""
+    local priority=""
     local limit="$DEFAULT_LIMIT"
     local filter=""
     local no_preview="false"
@@ -204,6 +276,26 @@ main() {
             --today)
                 today="true"
                 shift
+                ;;
+            --active-timers)
+                active_timers="true"
+                shift
+                ;;
+            --project)
+                project="$2"
+                shift 2
+                ;;
+            --tag)
+                tag="$2"
+                shift 2
+                ;;
+            --status)
+                filter_status="$2"
+                shift 2
+                ;;
+            --priority)
+                priority="$2"
+                shift 2
                 ;;
             --limit)
                 limit="$2"
@@ -310,6 +402,223 @@ echo
 node bin/tn
 EOF
     chmod +x "$add_task_script"
+    
+    # Create temporary script for task completion/toggle
+    local toggle_script="/tmp/tn-fzf-toggle-$$"
+    cat > "$toggle_script" << EOF
+#!/bin/bash
+line="\$1"
+cd "$PWD"
+path=\$(echo "\$line" | cut -d\$'\t' -f2)
+echo "Toggling task status: \$path"
+node bin/tn toggle "\$path"
+echo "Press any key to continue..."
+read -n 1
+EOF
+    chmod +x "$toggle_script"
+    
+    # Create temporary script for task deletion
+    local delete_script="/tmp/tn-fzf-delete-$$"
+    cat > "$delete_script" << EOF
+#!/bin/bash
+line="\$1"
+cd "$PWD"
+path=\$(echo "\$line" | cut -d\$'\t' -f2)
+task_title=\$(echo "\$line" | cut -d\$'\t' -f1 | sed 's/[^[:print:]]//g' | sed 's/\[.*\]//g' | sed 's/[📅⏰🍅⏱️●◐○✗⏸]//g' | xargs)
+echo "Delete task: \$task_title"
+echo "File: \$path"
+echo 
+read -p "Are you sure? (y/N): " confirm
+if [[ "\$confirm" =~ ^[Yy]$ ]]; then
+    node bin/tn delete "\$path" --force
+    echo "Task deleted."
+else
+    echo "Cancelled."
+fi
+echo "Press any key to continue..."
+read -n 1
+EOF
+    chmod +x "$delete_script"
+    
+    # Create temporary script for task updates
+    local update_script="/tmp/tn-fzf-update-$$"
+    cat > "$update_script" << EOF
+#!/bin/bash
+line="\$1"
+cd "$PWD"
+path=\$(echo "\$line" | cut -d\$'\t' -f2)
+task_title=\$(echo "\$line" | cut -d\$'\t' -f1 | sed 's/[^[:print:]]//g' | sed 's/\[.*\]//g' | sed 's/[📅⏰🍅⏱️●◐○✗⏸]//g' | xargs)
+
+echo "Update task: \$task_title"
+echo "File: \$path"
+echo
+echo "Available updates:"
+echo "1) Status    2) Priority    3) Due date    4) Title"
+echo "5) Add tags  6) Add project 7) Time estimate"
+echo
+read -p "Choose option (1-7): " choice
+
+case \$choice in
+    1) 
+        echo "Status options: todo, open, in-progress, completed, cancelled, waiting"
+        read -p "New status: " status
+        [[ -n "\$status" ]] && node bin/tn update "\$path" --status "\$status"
+        ;;
+    2)
+        echo "Priority options: low, normal, high, urgent"
+        read -p "New priority: " priority
+        [[ -n "\$priority" ]] && node bin/tn update "\$path" --priority "\$priority"
+        ;;
+    3)
+        read -p "Due date (YYYY-MM-DD or natural language): " due
+        [[ -n "\$due" ]] && node bin/tn update "\$path" --due "\$due"
+        ;;
+    4)
+        read -p "New title: " title
+        [[ -n "\$title" ]] && node bin/tn update "\$path" --title "\$title"
+        ;;
+    5)
+        read -p "Tags to add (comma-separated): " tags
+        [[ -n "\$tags" ]] && node bin/tn update "\$path" --add-tags "\$tags"
+        ;;
+    6)
+        read -p "Project to add: " project
+        [[ -n "\$project" ]] && node bin/tn update "\$path" --add-projects "\$project"
+        ;;
+    7)
+        read -p "Time estimate (minutes): " estimate
+        [[ -n "\$estimate" ]] && node bin/tn update "\$path" --estimate "\$estimate"
+        ;;
+    *)
+        echo "Invalid option"
+        ;;
+esac
+echo "Press any key to continue..."
+read -n 1
+EOF
+    chmod +x "$update_script"
+    
+    # Create temporary script for starting timer
+    local start_timer_script="/tmp/tn-fzf-start-timer-$$"
+    cat > "$start_timer_script" << EOF
+#!/bin/bash
+line="\$1"
+cd "$PWD"
+path=\$(echo "\$line" | cut -d\$'\t' -f2)
+task_title=\$(echo "\$line" | cut -d\$'\t' -f1 | sed 's/[^[:print:]]//g' | sed 's/\[.*\]//g' | sed 's/[📅⏰🍅⏱️●◐○✗⏸]//g' | xargs)
+echo "Starting timer for: \$task_title"
+node bin/tn timer start --task "\$path"
+echo "Press any key to continue..."
+read -n 1
+EOF
+    chmod +x "$start_timer_script"
+    
+    # Create temporary script for stopping timer
+    local stop_timer_script="/tmp/tn-fzf-stop-timer-$$"
+    cat > "$stop_timer_script" << EOF
+#!/bin/bash
+line="\$1"
+cd "$PWD"
+path=\$(echo "\$line" | cut -d\$'\t' -f2)
+task_title=\$(echo "\$line" | cut -d\$'\t' -f1 | sed 's/[^[:print:]]//g' | sed 's/\[.*\]//g' | sed 's/[📅⏰🍅⏱️●◐○✗⏸]//g' | xargs)
+echo "Stopping timer for: \$task_title"
+node bin/tn timer stop --task "\$path"
+echo "Press any key to continue..."
+read -n 1
+EOF
+    chmod +x "$stop_timer_script"
+    
+    # Create temporary script for starting pomodoro
+    local start_pomodoro_script="/tmp/tn-fzf-pomodoro-$$"
+    cat > "$start_pomodoro_script" << EOF
+#!/bin/bash
+line="\$1"
+cd "$PWD"
+path=\$(echo "\$line" | cut -d\$'\t' -f2)
+task_title=\$(echo "\$line" | cut -d\$'\t' -f1 | sed 's/[^[:print:]]//g' | sed 's/\[.*\]//g' | sed 's/[📅⏰🍅⏱️●◐○✗⏸]//g' | xargs)
+echo "Starting pomodoro for: \$task_title"
+echo
+echo "Durations: 1) 25min (default)  2) 15min  3) 45min  4) Custom"
+read -p "Choose (1-4): " choice
+case \$choice in
+    2) duration="15" ;;
+    3) duration="45" ;;
+    4) read -p "Duration in minutes: " duration ;;
+    *) duration="" ;;
+esac
+
+if [[ -n "\$duration" ]]; then
+    node bin/tn pomodoro start --task "\$path" --duration "\$duration"
+else
+    node bin/tn pomodoro start --task "\$path"
+fi
+echo "Press any key to continue..."
+read -n 1
+EOF
+    chmod +x "$start_pomodoro_script"
+    
+    # Create temporary script for task details
+    local details_script="/tmp/tn-fzf-details-$$"
+    cat > "$details_script" << EOF
+#!/bin/bash
+line="\$1"
+cd "$PWD"
+path=\$(echo "\$line" | cut -d\$'\t' -f2)
+task_title=\$(echo "\$line" | cut -d\$'\t' -f1 | sed 's/[^[:print:]]//g' | sed 's/\[.*\]//g' | sed 's/[📅⏰🍅⏱️●◐○✗⏸]//g' | xargs)
+
+echo "Task Details: \$task_title"
+echo "════════════════════════════════════════"
+
+# Get detailed task info
+echo "📋 Task Information:"
+node bin/tn list --filter "path:\$path" --json | jq -r '.data.tasks[0] | 
+  "ID: " + (.id // "N/A") + "\n" +
+  "Status: " + (.status // "N/A") + "\n" +
+  "Priority: " + (.priority // "N/A") + "\n" +
+  "Due: " + (.due // "Not set") + "\n" +  
+  "Scheduled: " + (.scheduled // "Not set") + "\n" +
+  "Tags: " + (if .tags then (.tags | join(", ")) else "None" end) + "\n" +
+  "Contexts: " + (if .contexts then (.contexts | join(", ")) else "None" end) + "\n" +
+  "Projects: " + (if .projects then (.projects | join(", ")) else "None" end) + "\n" +
+  "Time Estimate: " + (if .timeEstimate then (.timeEstimate | tostring) + " minutes" else "Not set" end)'
+
+echo
+echo "⏱️ Time Tracking:"
+node bin/tn timer log --task "\$path" 2>/dev/null | tail -n +3 || echo "No time tracking data"
+
+echo
+echo "Press any key to continue..."
+read -n 1
+EOF
+    chmod +x "$details_script"
+    
+    # Create temporary script for timer status
+    local timer_status_script="/tmp/tn-fzf-timer-status-$$"
+    cat > "$timer_status_script" << EOF
+#!/bin/bash
+cd "$PWD"
+echo "Current Timer Status:"
+echo "═══════════════════════"
+node bin/tn timer status
+echo
+echo "Press any key to continue..."
+read -n 1
+EOF
+    chmod +x "$timer_status_script"
+    
+    # Create temporary script for pomodoro status
+    local pomodoro_status_script="/tmp/tn-fzf-pomodoro-status-$$"
+    cat > "$pomodoro_status_script" << EOF
+#!/bin/bash
+cd "$PWD"
+echo "Current Pomodoro Status:"
+echo "══════════════════════"
+node bin/tn pomodoro status
+echo
+echo "Press any key to continue..."
+read -n 1
+EOF
+    chmod +x "$pomodoro_status_script"
 
     # Set up fzf options
     local fzf_opts=(
@@ -319,10 +628,19 @@ EOF
         "--border"
         "--info=inline"
         "--prompt=Tasks❯ "
-        "--header=ENTER=Obsidian | Ctrl-E=Editor | Alt-A=Add Task | Ctrl-R=Refresh | Ctrl-C=Exit"
+        "--header=ENTER=Obsidian | Alt-C=Toggle | Alt-T=Timer | Alt-P=Pomodoro | Alt-I=Details | Ctrl-R=Refresh"
         "--bind=ctrl-r:reload($reload_script)"
         "--bind=ctrl-e:execute($editor_script {})"
         "--bind=alt-a:execute($add_task_script)+reload($reload_script)"
+        "--bind=alt-c:execute($toggle_script {})+reload($reload_script)"
+        "--bind=alt-d:execute($delete_script {})+reload($reload_script)"
+        "--bind=alt-u:execute($update_script {})+reload($reload_script)"
+        "--bind=alt-t:execute($start_timer_script {})"
+        "--bind=alt-s:execute($stop_timer_script {})"
+        "--bind=alt-p:execute($start_pomodoro_script {})"
+        "--bind=alt-i:execute($details_script {})"
+        "--bind=ctrl-t:execute($timer_status_script)"
+        "--bind=ctrl-p:execute($pomodoro_status_script)"
         "--delimiter=\t"
         "--with-nth=1"
     )
@@ -340,7 +658,10 @@ EOF
     selected=$(get_tasks | fzf "${fzf_opts[@]}")
     
     # Cleanup temporary scripts
-    rm -f "$preview_script" "$editor_script" "$reload_script" "$add_task_script"
+    rm -f "$preview_script" "$editor_script" "$reload_script" "$add_task_script" \
+          "$toggle_script" "$delete_script" "$update_script" "$start_timer_script" \
+          "$stop_timer_script" "$start_pomodoro_script" "$details_script" \
+          "$timer_status_script" "$pomodoro_status_script"
     
     # Handle selection (ENTER key - open in Obsidian)
     if [[ -n "$selected" ]]; then
