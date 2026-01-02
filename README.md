@@ -11,6 +11,7 @@ A command-line interface for TaskNotes with interactive mode and real-time NLP p
 -  **Smart Parsing**: Extract dates, priorities, tags, contexts, and more
 -  **Time Tracking**: Start/stop timers, view time logs and sessions
 -  **Pomodoro Integration**: Full pomodoro timer with stats and task integration
+-  **Calendar Integration**: View calendar sources, events, and sync status
 -  **Project Management**: Create, view, and manage projects with stats
 -  **Recurring Tasks**: Create and manage recurring tasks with patterns
 -  **FZF Integration**: Interactive fuzzy-search task browser with preview
@@ -115,6 +116,14 @@ tn projects list
 tn projects show "Website Redesign"
 tn projects create "New Project" --description "My new project"
 tn projects stats "Website Redesign" --period month
+
+# Calendar integration
+tn calendars list                              # Overview of all calendar sources
+tn calendars google                            # Google Calendar connection details
+tn calendars microsoft                         # Microsoft Calendar details
+tn calendars subscriptions                     # ICS subscription details
+tn calendars events                            # List all calendar events
+tn calendars events --start 2026-01-01 --end 2026-01-31  # Filter by date range
 
 # Recurring tasks
 tn recurring create --title "Weekly standup" --pattern "every monday" --time "09:00"
@@ -420,6 +429,41 @@ tn projects stats "Website Redesign" --period month
 tn projects list --json
 tn projects show "Website Redesign" --json
 ```
+
+## Calendar Integration
+
+View and manage calendar sources connected to TaskNotes:
+
+```bash
+# Overview of all calendar sources
+tn calendars list
+
+# Google Calendar connection and calendars
+tn calendars google
+
+# Microsoft Calendar connection and calendars
+tn calendars microsoft
+
+# ICS subscription details with sync status
+tn calendars subscriptions
+
+# List all calendar events
+tn calendars events
+
+# Filter events by date range
+tn calendars events --start 2026-01-01 --end 2026-01-31
+
+# JSON output for automation
+tn calendars list --json
+tn calendars events --json
+```
+
+The calendars command shows:
+
+- **Provider status** - Connection state for Google and Microsoft calendars
+- **Account info** - Connected email addresses and calendar counts
+- **Subscriptions** - ICS feed URLs with last sync time and errors
+- **Events** - All events from all sources, grouped by date
 
 ## Recurring Tasks
 
