@@ -21,6 +21,7 @@ const archiveCommand = require('../commands/archive');
 const filterOptionsCommand = require('../commands/filter-options');
 const recurringCompleteCommand = require('../commands/recurring-complete');
 const apiDocsCommand = require('../commands/api-docs');
+const calendarsCommand = require('../commands/calendars');
 
 const program = new Command();
 
@@ -165,6 +166,14 @@ program
   .description('Show task statistics and insights')
   .option('--json', 'Output results as JSON')
   .action(statsCommand.handler);
+
+program
+  .command('calendars <action>')
+  .description('Calendar commands (list, google, microsoft, subscriptions, events)')
+  .option('--start <date>', 'Start date filter for events (ISO format)')
+  .option('--end <date>', 'End date filter for events (ISO format)')
+  .option('--json', 'Output as JSON')
+  .action(calendarsCommand.handler);
 
 program
   .command('filter-help')
