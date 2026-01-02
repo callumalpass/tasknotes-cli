@@ -1,0 +1,16 @@
+{
+  "issue_number": 1,
+  "status": "completed",
+  "tags": ["filter", "parser", "bug"],
+  "priority": "high",
+  "difficulty": "easy",
+  "risk": "low",
+  "type": "bug",
+  "affected_areas": ["lib/filter-parser.js", "commands/list.js"],
+  "ai_summary": "Filter parser creates nested binary tree instead of flat array for 3+ AND/OR conditions, causing backend query failures",
+  "notes": "The issue is in parseAndExpression() and parseOrExpression() methods (lines 171-193). When parsing A AND B AND C, the code creates { children: [{ children: [A, B] }, C] } instead of { children: [A, B, C] }. The astToFilterQuery() method then passes this nested structure directly to the backend, which cannot process nested groups correctly. Two conditions work because they don't create nesting. The fix requires flattening consecutive AND/OR groups into a single flat array of children. This same issue affects OR expressions as well.",
+  "root_cause": "parseAndExpression() creates binary tree nesting for each AND token: left = { type: 'group', conjunction: 'and', children: [left, right] }. This nests previous results inside new groups instead of accumulating conditions into a flat array. The astToFilterQuery() method then assigns ast.children directly without flattening.",
+  "suggested_fix": "Modify parseAndExpression() and parseOrExpression() to collect all conditions into a flat array. When a new AND/OR is encountered, append to the existing children array instead of wrapping in a new group. Alternatively, flatten the AST in astToFilterQuery() by recursively extracting conditions from nested groups with the same conjunction.",
+  "analyzed_at": "2026-01-02T11:22:35Z",
+  "analyzed_by": "claude-opus-4-5-20251101"
+}
