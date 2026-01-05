@@ -4,7 +4,8 @@
   "description": "Command-line interface for TaskNotes with interactive mode and real-time NLP preview",
   "main": "bin/tn",
   "bin": {
-    "tn": "./bin/tn"
+    "tn": "./bin/tn",
+    "tn-fzf": "./bin/tn-fzf"
   },
   "scripts": {
     "start": "node bin/tn",
