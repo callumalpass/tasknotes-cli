@@ -7,6 +7,12 @@
     "tn": "./bin/tn",
     "tn-fzf": "./bin/tn-fzf"
   },
+  "files": [
+    "bin",
+    "commands",
+    "lib",
+    "README.md"
+  ],
   "scripts": {
     "start": "node bin/tn",
     "dev": "node --inspect bin/tn",

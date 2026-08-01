@@ -1,0 +1,59 @@
+name: Publish npm package
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - run: npm install --global npm@11
+
+      - name: Validate tag
+        id: release
+        run: |
+          VERSION="$(node --print "require('./package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "v${VERSION}" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package version v${VERSION}"
+            exit 1
+          fi
+          case "$VERSION" in
+            *-*) DIST_TAG="next" ;;
+            *) DIST_TAG="latest" ;;
+          esac
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "dist_tag=$DIST_TAG" >> "$GITHUB_OUTPUT"
+
+      - run: npm ci
+      - run: npm test
+      - run: npm pack --dry-run
+
+      - name: Confirm version is unpublished
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          if npm view "tasknotes-cli@$VERSION" version >/dev/null 2>&1; then
+            echo "::error::tasknotes-cli@$VERSION is already published"
+            exit 1
+          fi
+
+      - name: Publish package
+        env:
+          DIST_TAG: ${{ steps.release.outputs.dist_tag }}
+        run: npm publish --access public --tag "$DIST_TAG"
