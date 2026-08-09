@@ -152,9 +152,15 @@ async function showProject(api, projectName, options) {
     archived: 'false'
   });
   
-  const projectTasks = result.tasks.filter(task => 
-    task.projects && task.projects.includes(projectName)
-  );
+  // Filter tasks - handle both plain names and [[wikilink]] format
+  const projectTasks = result.tasks.filter(task => {
+    if (!task.projects || task.projects.length === 0) return false;
+    return task.projects.some(proj => {
+      if (!proj || typeof proj !== 'string') return false;
+      const cleanProj = proj.replace(/^\[\[|\]\]$/g, '');
+      return cleanProj === projectName || proj === projectName || cleanProj.includes(projectName) || projectName.includes(cleanProj);
+    });
+  });
   
   spinner.succeed(`Found ${projectTasks.length} tasks for project`);
 
@@ -220,9 +226,15 @@ async function showProjectStats(api, projectName, options) {
     project: projectName 
   });
   
-  const projectTasks = result.tasks.filter(task => 
-    task.projects && task.projects.includes(projectName)
-  );
+  // Filter tasks - handle both plain names and [[wikilink]] format
+  const projectTasks = result.tasks.filter(task => {
+    if (!task.projects || task.projects.length === 0) return false;
+    return task.projects.some(proj => {
+      if (!proj || typeof proj !== 'string') return false;
+      const cleanProj = proj.replace(/^\[\[|\]\]$/g, '');
+      return cleanProj === projectName || proj === projectName || cleanProj.includes(projectName) || projectName.includes(cleanProj);
+    });
+  });
   
   spinner.succeed(`Stats calculated for ${projectTasks.length} tasks`);
 
